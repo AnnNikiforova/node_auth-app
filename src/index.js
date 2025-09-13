@@ -8,6 +8,7 @@ import cors from 'cors';
 import { userRouter } from './routes/user.route.js';
 import { errorMiddleware } from './middlewares/errorMiddleware.js';
 import cookieParser from 'cookie-parser';
+import { guestRouter } from './routes/guest.route.js';
 
 const PORT = process.env.PORT || 3005;
 
@@ -24,10 +25,15 @@ app.use(
 );
 
 app.use(authRouter);
+app.use(guestRouter);
 app.use('/users', userRouter);
 
 app.get('/', (req, res) => {
   res.send('Hello');
+});
+
+app.use((req, res) => {
+  res.status(404).send({ message: 'Not found' });
 });
 
 app.use(errorMiddleware);

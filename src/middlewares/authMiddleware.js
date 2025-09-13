@@ -1,3 +1,4 @@
+import { ApiError } from '../exeptions/api.error.js';
 import { jwtService } from '../services/jwt.service.js';
 
 export const authMiddleware = (req, res, next) => {
@@ -5,18 +6,16 @@ export const authMiddleware = (req, res, next) => {
   const [, token] = authorization.split(' ');
 
   if (!authorization || !token) {
-    res.sendStatus(401);
-
-    return;
+    return next(ApiError.unauthorized());
   }
 
   const userData = jwtService.verify(token);
 
   if (!userData) {
-    res.sendStatus(401);
-
-    return;
+    return next(ApiError.unauthorized());
   }
+
+  req.user = userData;
 
   next();
 };

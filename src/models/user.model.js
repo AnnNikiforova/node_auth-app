@@ -1,5 +1,6 @@
 import { DataTypes } from 'sequelize';
 import { client } from '../utils/db.js';
+import { Token } from './token.model.js';
 
 export const User = client.define('user', {
   name: {
@@ -18,4 +19,14 @@ export const User = client.define('user', {
   activationToken: {
     type: DataTypes.STRING,
   },
+});
+
+User.hasMany(Token, {
+  foreignKey: { name: 'userId', allowNull: false },
+  onDelete: 'CASCADE',
+});
+
+Token.belongsTo(User, {
+  foreignKey: { name: 'userId', allowNull: false },
+  onDelete: 'CASCADE',
 });

@@ -13,12 +13,12 @@ import {
 const register = async (req, res) => {
   const { name, email, password } = req.body;
   const errors = {
-    name: validateName(email),
+    name: validateName(name),
     email: validateEmail(email),
     password: validatePassword(password),
   };
 
-  if (name.email || errors.email || errors.password) {
+  if (errors.name || errors.email || errors.password) {
     throw ApiError.badRequest('Bad request', errors);
   }
 
@@ -40,7 +40,12 @@ const activate = async (req, res) => {
   user.activationToken = null;
   await user.save();
 
-  res.send(user);
+  const token = await generateTokens(res, user);
+
+  res.send({
+    token,
+    redirectUrl: `${process.env.CLIENT_HOST}/profile`,
+  });
 };
 
 const login = async (req, res) => {
@@ -58,7 +63,9 @@ const login = async (req, res) => {
     throw ApiError.badRequest('Wrong password');
   }
 
-  await generateTokens(res, user);
+  const token = await generateTokens(res, user);
+
+  res.send(token);
 };
 
 const requestPasswordReset = async (req, res) => {
@@ -71,7 +78,21 @@ const requestPasswordReset = async (req, res) => {
 
 const passwordReset = async (req, res) => {
   const { token } = req.params;
-  const { password } = req.body;
+  const { password, confirmation } = req.body;
+
+  if (!password || !confirmation) {
+    throw ApiError.badRequest('Password and confirmation are required');
+  }
+
+  if (password !== confirmation) {
+    throw ApiError.badRequest('Passwords do not match');
+  }
+
+  const passwordError = validatePassword(password);
+
+  if (passwordError) {
+    throw ApiError.badRequest(passwordError);
+  }
 
   const user = await User.findOne({ where: { activationToken: token } });
 
@@ -92,7 +113,7 @@ const refresh = async (req, res) => {
   const { refreshToken } = req.cookies;
 
   if (!refreshToken) {
-    throw new Error('Error');
+    throw ApiError.unauthorized;
   }
 
   const userData = jwtService.verifyRefresh(refreshToken);
@@ -117,7 +138,7 @@ const generateTokens = async (res, user) => {
 
   res.cookie('refreshToken', refreshAccessToken, {
     maxAge: 30 * 24 * 60 * 60 * 1000,
-    HttpOnly: true,
+    httpOnly: true,
   });
 
   res.send({
@@ -128,13 +149,24 @@ const generateTokens = async (res, user) => {
 
 const logout = async (req, res) => {
   const { refreshToken } = req.cookies;
+
+  if (!refreshToken) {
+    throw ApiError.unauthorized();
+  }
+
   const userData = jwtService.verifyRefresh(refreshToken);
 
-  if (!userData || !refreshToken) {
+  if (!userData) {
     throw ApiError.unauthorized();
   }
 
   await tokenService.remove(userData.id);
+
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
   res.sendStatus(204);
 };
 

@@ -1,15 +1,19 @@
 import { ApiError } from '../exeptions/api.error.js';
 import { User } from '../models/user.model.js';
 import bcrypt from 'bcrypt';
-import { validateEmail } from '../utils/validation.js';
+import {
+  validateEmail,
+  validateName,
+  validatePassword,
+} from '../utils/validation.js';
 import { emailService } from '../services/email.service.js';
 
 const updateName = async (req, res) => {
   const { name } = req.body;
   const userId = req.user.id;
 
-  if (!name || name.length < 3) {
-    throw ApiError.badRequest('Name must be at least 3 characters long');
+  if (validateName(name)) {
+    throw ApiError.badRequest(validateName(name));
   }
 
   const user = await User.findByPk(userId);
@@ -25,13 +29,23 @@ const updateName = async (req, res) => {
 };
 
 const updatePassword = async (req, res) => {
-  const { oldPassword, newPassword } = req.body;
+  const { oldPassword, newPassword, newPasswordConfirm } = req.body;
   const userId = req.user.id;
 
-  if (!newPassword || newPassword.length < 6) {
-    throw ApiError.badRequest(
-      'New password must be at least 6 characters long',
-    );
+  if (validatePassword(newPassword)) {
+    throw ApiError.badRequest(validatePassword(newPassword));
+  }
+
+  const errors = {
+    password: validateEmail(newPassword),
+  };
+
+  if (!newPassword || errors.password) {
+    throw ApiError.badRequest('Invalid password', errors);
+  }
+
+  if (newPassword !== newPasswordConfirm) {
+    throw ApiError.badRequest('Passwords do not match');
   }
 
   const user = await User.findByPk(userId);
@@ -41,10 +55,9 @@ const updatePassword = async (req, res) => {
   }
 
   if (!user.password) {
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    return res.send({ message: 'Password set successfully' });
+    throw ApiError.badRequest(
+      'This account does not have a password. Use password reset flow.',
+    );
   }
 
   const isOldPasswordValid = await bcrypt.compare(oldPassword, user.password);
@@ -60,8 +73,12 @@ const updatePassword = async (req, res) => {
 };
 
 const updateEmail = async (req, res) => {
-  const { password, newEmail } = req.body;
+  const { password, newEmail, newEmailConfirm } = req.body;
   const userId = req.user.id;
+
+  if (newEmail !== newEmailConfirm) {
+    throw ApiError.badRequest('Emails do not match');
+  }
 
   const errors = {
     email: validateEmail(newEmail),
@@ -94,7 +111,7 @@ const updateEmail = async (req, res) => {
   user.email = newEmail;
   await user.save();
 
-  await emailService.sendResetEmail(oldEmail, newEmail);
+  await emailService.sendUpdateEmail(oldEmail, newEmail);
 
   res.send({ message: 'Email updated successfully' });
 };

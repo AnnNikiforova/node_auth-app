@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../models/user.model.js';
 import { ApiError } from '../exeptions/api.error.js';
@@ -18,7 +19,7 @@ const register = async (name, email, password) => {
   const existUser = await findByEmail(email);
 
   if (existUser) {
-    throw ApiError.BadRequest('User already exists', {
+    throw ApiError.badRequest('User already exists', {
       email: 'User already exists',
     });
   }
@@ -30,22 +31,32 @@ const register = async (name, email, password) => {
     activationToken,
   });
 
-  await emailService.sendActivationEmail(email, activationToken);
+  try {
+    await emailService.sendActivationEmail(email, activationToken);
+  } catch (err) {
+    console.error('Failed to send activation email:', err);
+  }
 };
 
 const passwordReset = async (email) => {
   const resetToken = uuidv4();
+  const expires = new Date(Date.now() + 60 * 60 * 1000);
 
   const user = await findByEmail(email);
 
   if (!user) {
-    throw ApiError.badRequest('No such user');
+    return;
   }
 
-  user.activationToken = resetToken;
+  user.resetToken = resetToken;
+  user.resetTokenExpires = expires;
   await user.save();
 
-  await emailService.sendResetEmail(email, resetToken);
+  try {
+    await emailService.sendResetEmail(email, resetToken);
+  } catch (err) {
+    console.error('Failed to send password reset email:', err);
+  }
 };
 
 const save = async (userId, newToken) => {
