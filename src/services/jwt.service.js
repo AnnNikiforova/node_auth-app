@@ -1,10 +1,21 @@
 import jwt from 'jsonwebtoken';
 
-if (!process.env.JWT_KEY) {
+const JWT_CONFIG = {
+  access: {
+    key: process.env.JWT_KEY,
+    expiresIn: process.env.JWT_EXPIRES_IN,
+  },
+  refresh: {
+    key: process.env.JWT_REFRESH_KEY,
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
+  },
+};
+
+if (!JWT_CONFIG.access.key) {
   throw new Error('JWT_KEY is not defined in environment variables');
 }
 
-if (!process.env.JWT_REFRESH_KEY) {
+if (!JWT_CONFIG.refresh.key) {
   throw new Error('JWT_REFRESH_KEY is not defined in environment variables');
 }
 
@@ -16,41 +27,26 @@ const extractPayload = (user) => {
   return { id: user.id, email: user.email };
 };
 
-const sign = (user) => {
+const signToken = (user, type = 'access') => {
   const payload = extractPayload(user);
+  const { key, expiresIn } = JWT_CONFIG[type];
 
-  return jwt.sign(payload, process.env.JWT_KEY, {
-    expiresIn: '5m',
-  });
+  return jwt.sign(payload, key, { expiresIn });
 };
 
-const verify = (token) => {
+const verifyToken = (token, type = 'access') => {
+  const { key } = JWT_CONFIG[type];
+
   try {
-    return jwt.verify(token, process.env.JWT_KEY);
-  } catch (error) {
-    return null;
-  }
-};
-
-const signRefresh = (user) => {
-  const payload = extractPayload(user);
-
-  return jwt.sign(payload, process.env.JWT_REFRESH_KEY, {
-    expiresIn: '30d',
-  });
-};
-
-const verifyRefresh = (token) => {
-  try {
-    return jwt.verify(token, process.env.JWT_REFRESH_KEY);
-  } catch (error) {
+    return jwt.verify(token, key);
+  } catch {
     return null;
   }
 };
 
 export const jwtService = {
-  sign,
-  verify,
-  signRefresh,
-  verifyRefresh,
+  sign: (user) => signToken(user, 'access'),
+  verify: (token) => verifyToken(token, 'access'),
+  signRefresh: (user) => signToken(user, 'refresh'),
+  verifyRefresh: (token) => verifyToken(token, 'refresh'),
 };

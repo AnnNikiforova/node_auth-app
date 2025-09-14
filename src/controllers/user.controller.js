@@ -1,19 +1,30 @@
+import { User } from '../models/index.js';
+import { userService } from '../services/user.service.js';
 import { ApiError } from '../exeptions/api.error.js';
-import { User } from '../models/user.model.js';
 import bcrypt from 'bcrypt';
 import {
-  validateEmail,
   validateName,
   validatePassword,
+  validateEmail,
 } from '../utils/validation.js';
-import { emailService } from '../services/email.service.js';
 
 const updateName = async (req, res) => {
-  const { name } = req.body;
-  const userId = req.user.id;
+  const userId = req.user?.id;
 
-  if (validateName(name)) {
-    throw ApiError.badRequest(validateName(name));
+  if (!userId) {
+    throw ApiError.unauthorized();
+  }
+
+  let { name } = req.body;
+
+  if (typeof name === 'string') {
+    name = name.trim();
+  }
+
+  const nameError = validateName(name);
+
+  if (nameError) {
+    throw ApiError.badRequest(nameError);
   }
 
   const user = await User.findByPk(userId);
@@ -29,35 +40,34 @@ const updateName = async (req, res) => {
 };
 
 const updatePassword = async (req, res) => {
-  const { oldPassword, newPassword, newPasswordConfirm } = req.body;
-  const userId = req.user.id;
+  const userId = req.user?.id;
 
-  if (validatePassword(newPassword)) {
-    throw ApiError.badRequest(validatePassword(newPassword));
+  if (!userId) {
+    throw ApiError.unauthorized();
   }
 
-  const errors = {
-    password: validateEmail(newPassword),
-  };
+  const { oldPassword, newPassword, newPasswordConfirm } = req.body;
 
-  if (!newPassword || errors.password) {
-    throw ApiError.badRequest('Invalid password', errors);
+  if (!oldPassword || !newPassword || !newPasswordConfirm) {
+    throw ApiError.badRequest(
+      'Old password, new password, and confirmation are required',
+    );
+  }
+
+  const passwordError = validatePassword(newPassword);
+
+  if (passwordError) {
+    throw ApiError.badRequest(passwordError);
   }
 
   if (newPassword !== newPasswordConfirm) {
-    throw ApiError.badRequest('Passwords do not match');
+    throw ApiError.badRequest('New passwords do not match');
   }
 
   const user = await User.findByPk(userId);
 
   if (!user) {
     throw ApiError.notFound('User not found');
-  }
-
-  if (!user.password) {
-    throw ApiError.badRequest(
-      'This account does not have a password. Use password reset flow.',
-    );
   }
 
   const isOldPasswordValid = await bcrypt.compare(oldPassword, user.password);
@@ -73,19 +83,26 @@ const updatePassword = async (req, res) => {
 };
 
 const updateEmail = async (req, res) => {
-  const { password, newEmail, newEmailConfirm } = req.body;
-  const userId = req.user.id;
+  const userId = req.user?.id;
 
-  if (newEmail !== newEmailConfirm) {
+  if (!userId) {
+    throw ApiError.unauthorized();
+  }
+
+  const { password, newEmail, newEmailConfirm } = req.body;
+
+  if (!newEmail || !newEmailConfirm) {
+    throw ApiError.badRequest('New email and confirmation are required');
+  }
+
+  if (newEmail.trim() !== newEmailConfirm.trim()) {
     throw ApiError.badRequest('Emails do not match');
   }
 
-  const errors = {
-    email: validateEmail(newEmail),
-  };
+  const emailError = validateEmail(newEmail);
 
-  if (!newEmail || errors.email) {
-    throw ApiError.badRequest('Invalid email', errors);
+  if (emailError) {
+    throw ApiError.badRequest(emailError);
   }
 
   const user = await User.findByPk(userId);
@@ -100,24 +117,38 @@ const updateEmail = async (req, res) => {
     throw ApiError.badRequest('Password is incorrect');
   }
 
-  const existingUser = await User.findOne({ where: { email: newEmail } });
-
-  if (existingUser) {
-    throw ApiError.badRequest('Email is already in use');
+  if (user.email === newEmail) {
+    return res.send({
+      message: 'New email is the same as the current email',
+      email: user.email,
+    });
   }
-
-  const oldEmail = user.email;
 
   user.email = newEmail;
   await user.save();
 
-  await emailService.sendUpdateEmail(oldEmail, newEmail);
+  res.send({ message: 'Email updated successfully', email: user.email });
+};
 
-  res.send({ message: 'Email updated successfully' });
+const getProfile = async (req, res) => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    throw ApiError.unauthorized();
+  }
+
+  const user = await User.findByPk(userId);
+
+  if (!user) {
+    throw ApiError.notFound('User not found');
+  }
+
+  res.send(userService.normalize(user));
 };
 
 export const userController = {
   updateName,
   updatePassword,
   updateEmail,
+  getProfile,
 };

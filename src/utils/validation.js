@@ -10,13 +10,13 @@ export const validateName = (value) => {
   }
 
   if (trimmedValue.length < 3) {
-    return 'At least 3 characters';
+    return 'Name must be at least 3 characters';
   }
 
   const namePattern = /^[a-zA-Zа-щА-ЩЬьЮюЯяІіЇїЄєҐґ-]{3,20}$/;
 
   if (!namePattern.test(trimmedValue)) {
-    return 'Name is not valid';
+    return 'Name contains invalid characters';
   }
 };
 
@@ -31,11 +31,7 @@ export const validateEmail = (value) => {
     return 'Email is required';
   }
 
-  if (!trimmedValue) {
-    return 'Email is required';
-  }
-
-  const emailPattern = /^[\w.+-]+@([\w-]+\.){1,3}[\w-]{2,}$/;
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   if (!emailPattern.test(trimmedValue)) {
     return 'Email is not valid';
@@ -54,6 +50,6 @@ export const validatePassword = (value) => {
   }
 
   if (trimmedValue.length < 6) {
-    return 'At least 6 characters';
+    return 'Password must be at least 6 characters';
   }
 };

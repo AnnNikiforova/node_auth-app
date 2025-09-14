@@ -2,20 +2,24 @@ import { ApiError } from '../exeptions/api.error.js';
 import { jwtService } from '../services/jwt.service.js';
 
 export const authMiddleware = (req, res, next) => {
-  const authorization = req.headers['authorization'] || '';
-  const [, token] = authorization.split(' ');
+  const authorization = req.headers['authorization'];
 
-  if (!authorization || !token) {
+  if (!authorization || !authorization.startsWith('Bearer ')) {
     return next(ApiError.unauthorized());
   }
 
-  const userData = jwtService.verify(token);
+  const token = authorization.split(' ')[1];
 
-  if (!userData) {
+  try {
+    const userData = jwtService.verify(token);
+
+    if (!userData) {
+      return next(ApiError.unauthorized());
+    }
+
+    req.user = userData;
+    next();
+  } catch (err) {
     return next(ApiError.unauthorized());
   }
-
-  req.user = userData;
-
-  next();
 };

@@ -1,9 +1,8 @@
 /* eslint-disable no-console */
 import { v4 as uuidv4 } from 'uuid';
-import { User } from '../models/user.model.js';
+import { User, Token } from '../models/index.js';
 import { ApiError } from '../exeptions/api.error.js';
 import { emailService } from './email.service.js';
-import { Token } from '../models/token.model.js';
 
 const normalize = ({ id, name, email }) => {
   return { id, name, email };

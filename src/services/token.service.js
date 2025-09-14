@@ -1,17 +1,18 @@
-import { Token } from '../models/token.model.js';
+import { Token } from '../models/index.js';
 
 const save = async (userId, newToken) => {
-  const token = await Token.findOne({ where: { userId } });
+  let token = await Token.findOne({ where: { userId } });
 
   if (!token) {
-    await Token.create({ userId, refreshToken: newToken });
+    token = await Token.create({ userId, refreshToken: newToken });
 
-    return;
+    return token;
   }
 
   token.refreshToken = newToken;
-
   await token.save();
+
+  return token;
 };
 
 const getByToken = (refreshToken) => {

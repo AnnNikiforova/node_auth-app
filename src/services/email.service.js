@@ -54,7 +54,7 @@ function sendUpdateEmail(oldEmail, newEmail) {
   const html = `<p>Your email has been changed to ${newEmail}</p>`;
 
   return send({
-    oldEmail,
+    email: oldEmail,
     html,
     subject: 'Email Change Notification',
   });

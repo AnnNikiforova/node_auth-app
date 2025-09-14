@@ -1,4 +1,4 @@
-import { User } from '../models/user.model.js';
+import { User } from '../models/index.js';
 import { userService } from '../services/user.service.js';
 import { jwtService } from '../services/jwt.service.js';
 import { ApiError } from '../exeptions/api.error.js';
@@ -12,6 +12,7 @@ import {
 
 const register = async (req, res) => {
   const { name, email, password } = req.body;
+
   const errors = {
     name: validateName(name),
     email: validateEmail(email),
@@ -25,7 +26,12 @@ const register = async (req, res) => {
   const hashedPass = await bcrypt.hash(password, 10);
 
   await userService.register(name, email, hashedPass);
-  res.send({ message: 'OK' });
+
+  res.send({
+    message:
+      // eslint-disable-next-line max-len
+      'Registration successful. Please check your email to activate your account.',
+  });
 };
 
 const activate = async (req, res) => {
@@ -33,17 +39,28 @@ const activate = async (req, res) => {
   const user = await User.findOne({ where: { activationToken } });
 
   if (!user) {
-    res.sendStatus(404);
-
-    return;
+    return res.sendStatus(404);
   }
+
   user.activationToken = null;
   await user.save();
 
-  const token = await generateTokens(res, user);
+  const {
+    user: normalizedUser,
+    accessToken,
+    refreshToken,
+  } = await generateTokens(user);
+
+  res.cookie('refreshToken', refreshToken, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
 
   res.send({
-    token,
+    user: normalizedUser,
+    accessToken,
     redirectUrl: `${process.env.CLIENT_HOST}/profile`,
   });
 };
@@ -54,26 +71,44 @@ const login = async (req, res) => {
   const user = await userService.findByEmail(email);
 
   if (!user) {
-    throw ApiError.badRequest('No such user');
+    throw ApiError.badRequest('User with this email does not exist');
+  }
+
+  if (user.activationToken) {
+    throw ApiError.badRequest('Please activate your account before logging in');
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.password);
 
   if (!isPasswordValid) {
-    throw ApiError.badRequest('Wrong password');
+    throw ApiError.badRequest('Incorrect password');
   }
 
-  const token = await generateTokens(res, user);
+  const {
+    user: normalizedUser,
+    accessToken,
+    refreshToken,
+  } = await generateTokens(user);
 
-  res.send(token);
+  res.cookie('refreshToken', refreshToken, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+
+  res.send({ user: normalizedUser, accessToken });
 };
 
 const requestPasswordReset = async (req, res) => {
   const { email } = req.body;
 
-  await userService.passwordReset(email);
+  if (!email) {
+    throw ApiError.badRequest('Email is required');
+  }
 
-  res.send({ message: 'OK' });
+  await userService.passwordReset(email);
+  res.send({ message: 'Password reset link sent to email (if user exists)' });
 };
 
 const passwordReset = async (req, res) => {
@@ -94,16 +129,20 @@ const passwordReset = async (req, res) => {
     throw ApiError.badRequest(passwordError);
   }
 
-  const user = await User.findOne({ where: { activationToken: token } });
+  const user = await User.findOne({
+    where: {
+      resetToken: token,
+      resetTokenExpires: { $gt: new Date() },
+    },
+  });
 
   if (!user) {
     throw ApiError.badRequest('Invalid or expired reset token');
   }
 
-  const hashedPass = await bcrypt.hash(password, 10);
-
-  user.password = hashedPass;
-  user.activationToken = null;
+  user.password = await bcrypt.hash(password, 10);
+  user.resetToken = null;
+  user.resetTokenExpires = null;
   await user.save();
 
   res.send({ message: 'Password has been reset successfully' });
@@ -113,38 +152,45 @@ const refresh = async (req, res) => {
   const { refreshToken } = req.cookies;
 
   if (!refreshToken) {
-    throw ApiError.unauthorized;
+    throw ApiError.unauthorized();
   }
 
   const userData = jwtService.verifyRefresh(refreshToken);
-  const token = await tokenService.getByToken(refreshToken);
+  const tokenRecord = await tokenService.getByToken(refreshToken);
 
-  if (!userData || !token) {
+  if (!userData || !tokenRecord) {
     throw ApiError.unauthorized();
   }
 
   const user = await userService.findByEmail(userData.email);
 
-  await generateTokens(res, user);
-};
+  if (!user) {
+    throw ApiError.unauthorized();
+  }
 
-const generateTokens = async (res, user) => {
-  const normalizedUser = userService.normalize(user);
+  const {
+    accessToken,
+    refreshToken: newRefreshToken,
+    user: normalizedUser,
+  } = await generateTokens(user);
 
-  const accessToken = jwtService.sign(normalizedUser);
-  const refreshAccessToken = jwtService.signRefresh(normalizedUser);
-
-  await tokenService.save(normalizedUser.id, refreshAccessToken);
-
-  res.cookie('refreshToken', refreshAccessToken, {
+  res.cookie('refreshToken', newRefreshToken, {
     maxAge: 30 * 24 * 60 * 60 * 1000,
     httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
   });
 
-  res.send({
-    user: normalizedUser,
-    accessToken,
-  });
+  res.send({ user: normalizedUser, accessToken });
+};
+
+const generateTokens = async (user) => {
+  const normalizedUser = userService.normalize(user);
+  const accessToken = jwtService.sign(normalizedUser);
+  const refreshToken = jwtService.signRefresh(normalizedUser);
+
+  await tokenService.save(normalizedUser.id, refreshToken);
+
+  return { user: normalizedUser, accessToken, refreshToken };
 };
 
 const logout = async (req, res) => {

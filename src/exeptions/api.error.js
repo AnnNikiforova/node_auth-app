@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor({ message, status, errors = {} }) {
     super(message);
 
+    this.name = 'ApiError';
     this.status = status;
     this.errors = errors;
   }
@@ -14,17 +15,17 @@ export class ApiError extends Error {
     });
   }
 
-  static unauthorized(errors) {
+  static unauthorized(message = 'Unauthorized user', errors = {}) {
     return new ApiError({
-      message: 'Unauthorized user',
+      message,
       errors,
       status: 401,
     });
   }
 
-  static notFound(errors) {
+  static notFound(message = 'Not found', errors = {}) {
     return new ApiError({
-      message: 'Not found',
+      message,
       errors,
       status: 404,
     });
